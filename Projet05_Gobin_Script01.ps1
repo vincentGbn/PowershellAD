@@ -1,11 +1,20 @@
-Write-Host " 1- Un Utilisateur"
-Write-Host " 2- Import utilisateurs par fichier csv"
-Write-Host " 3- EXIT"
-$SelectScript = Read-Host
+
+param (
+  $SelectScript
+)
+#Création d'un menu
 switch ($SelectScript) {1 {$Firstname = Read-Host ("Prenom")
+
   $Lastname = Read-Host ("Nom")
   $OU = Read-Host ("OU")
   $Group = Read-Host ("Groupe")
+  $Username = $Firstname + "." + $Lastname
+  $CompleteName = $Firstname + " " + $Lastname
+  $NomDeDomaine = "acme.fr"
+  $courriel = $Username + "@" + $NomDeDomaine
+  $CheminServer = "C:\Serveur\UserDirectory\" + $Username
+  $mdp = "Acme.fr2020"
+
   Write-Host $Firstname
   Write-Host $Lastname
   Write-Host $OU
@@ -19,9 +28,6 @@ switch ($SelectScript) {1 {$Firstname = Read-Host ("Prenom")
     $Lastname = Read-Host "Veillez indiquer votre nom"
   }
 
-  $Username = $Firstname + "." + $Lastname
-  $CompleteName = $Firstname + " " + $Lastname
-  $courriel = $Username + "@" + "acme.fr"
   switch($OU) {
     "Direction Generale" {$OU = "OU=DirectionGenerale,DC=acme,DC=fr"}
     "Ressources Humaines" {$OU = "OU=RessourcesHumaines,DC=acme,DC=fr"}
@@ -31,10 +37,11 @@ switch ($SelectScript) {1 {$Firstname = Read-Host ("Prenom")
     "" {$OU = Read-Host ("L'Ou est obligatoire")}
   }
   try {
-    New-ADUser -Name $CompleteName -GivenName $Firstname -Surname $Lastname -SamAccountName $Username -UserPrincipalName $courriel -Path $OU -AccountPassword (ConvertTo-SecureString "Acme.fr2020" -AsPlainText -force) -ChangePasswordAtLogon $True -Enabled $true
+    New-ADUser -Name $CompleteName -GivenName $Firstname -Surname $Lastname -SamAccountName $Username -UserPrincipalName $courriel -Path $OU -AccountPassword (ConvertTo-SecureString $mdp -AsPlainText -force) -ChangePasswordAtLogon $True -Enabled $true
     Add-ADGroupMember -Identity $group -Members $Username
-    New-Item -Path C:\Serveur\UserDirectory\$Username -ItemType Directory
-    New-SmbShare -Name $Username -Path C:\Serveur\UserDirectory\$Username -FullAccess $Username
+    New-Item -Path $CheminServer -ItemType Directory
+    New-SmbShare -Name $Username -Path $CheminServer -FullAccess $Username
+    Add-NTFSAccess –Path $CheminServer –Account $courriel –AccessRights Modify
     echo "Utilisateur ajouté : $CompleteName"
   }
   catch {
@@ -42,7 +49,8 @@ switch ($SelectScript) {1 {$Firstname = Read-Host ("Prenom")
   }}
 2 {# Importer des utilisateurs AD à partir d'un fichier CSV
 # Chemin d’accès vers votre fichier d’importation CSV
-$ADUsers = Import-csv -Delimiter ";" C:\Users\Administrateur\Desktop\useraccount.csv
+$CheminCsv = "C:\Users\Administrateur\Desktop\useraccount.csv"
+$ADUsers = Import-csv -Delimiter ";" $CheminCsv
 
 foreach ($User in $ADUsers)
 {
@@ -52,7 +60,8 @@ foreach ($User in $ADUsers)
   $Password = $User.password
   $OU = $User.ou
   $Group = $User.group
-
+  $CheminServer = "C:\Serveur\UserDirectory\" + $Username
+  $NomDeDomaine = "acme.fr"
   #Vérifiez si le compte utilisateur existe déjà dans AD
    if (Get-ADUser -F {SamAccountName -eq $Username})
    {
@@ -64,7 +73,7 @@ foreach ($User in $ADUsers)
      #Si un utilisateur n’existe pas, créez un nouveau compte utilisateur
      New-ADUser `
             -SamAccountName $Username `
-            -UserPrincipalName "$Username@acme.fr" `
+            -UserPrincipalName "$Username@$NomDeDomaine" `
             -Name "$Firstname $Lastname" `
             -GivenName $Firstname `
             -Surname $Lastname `
@@ -73,8 +82,9 @@ foreach ($User in $ADUsers)
             -Path $OU `
             -AccountPassword (convertto-securestring $Password -AsPlainText -Force)
      Add-ADGroupMember -Identity $Group -Members $Username
-     New-Item -Path C:\Serveur\UserDirectory\$Username -ItemType Directory
-     New-SmbShare -Name $Username -Path C:\Serveur\UserDirectory\$Username -FullAccess $Username
+     New-Item -Path $CheminServer -ItemType Directory
+     New-SmbShare -Name $Username -Path $CheminServer -FullAccess $Username
+     Add-NTFSAccess –Path $CheminServer –Account "$Username@$NomDeDomaine" –AccessRights Modify
    }
 }
 }
